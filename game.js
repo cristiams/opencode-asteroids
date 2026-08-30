@@ -63,18 +63,20 @@ const SPEEDS = [0, 85, 55, 32];   // velocidad base por tamaño
 const POINTS = [0, 100, 50, 20];  // puntos por tamaño
 
 class Asteroid {
-  constructor(x, y, size = 3) {
+  constructor(x, y, size = 3, golden = false) {
     this.x    = x;
     this.y    = y;
     this.size = size;
+    this.golden = golden;
     this.radius = RADII[size];
     this.dead = false;
 
+    const speedMul = golden ? 1.8 : 1;
     const angle = rand(0, Math.PI * 2);
-    const speed = SPEEDS[size] + rand(-15, 15);
+    const speed = (SPEEDS[size] + rand(-15, 15)) * speedMul;
     this.vx = Math.cos(angle) * speed;
     this.vy = Math.sin(angle) * speed;
-    this.rotSpeed = rand(-1.2, 1.2);
+    this.rotSpeed = rand(golden ? -1.8 : -1.2, golden ? 1.8 : 1.2);
     this.rot = rand(0, Math.PI * 2);
 
     // Polígono irregular
@@ -99,9 +101,8 @@ class Asteroid {
       new Asteroid(this.x, this.y, this.size - 1),
       new Asteroid(this.x, this.y, this.size - 1),
     ];
-    // 15% de probabilidad de soltar un power-up de velocidad
-    // Spawnear aleatoriamente, lejos de la nave (radio de seguridad 130px)
-    if (Math.random() < 0.15) {
+    // 15% de probabilidad de soltar un power-up de velocidad (solo normales)
+    if (!this.golden && Math.random() < 0.15) {
       const SAFE_DIST = 130;
       let px = this.x, py = this.y;
       do {
@@ -117,14 +118,24 @@ class Asteroid {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.rot);
-    ctx.strokeStyle = '#fff';
     ctx.lineWidth   = 1.5;
     ctx.lineJoin    = 'round';
+
+    if (this.golden) {
+      ctx.shadowColor = '#ffd700';
+      ctx.shadowBlur  = 12;
+      ctx.strokeStyle = '#ffd700';
+      ctx.fillStyle   = 'rgba(255, 215, 0, 0.12)';
+    } else {
+      ctx.strokeStyle = '#fff';
+    }
+
     ctx.beginPath();
     ctx.moveTo(this.verts[0][0], this.verts[0][1]);
     for (let i = 1; i < this.verts.length; i++)
       ctx.lineTo(this.verts[i][0], this.verts[i][1]);
     ctx.closePath();
+    if (this.golden) ctx.fill();
     ctx.stroke();
     ctx.restore();
   }
@@ -311,7 +322,7 @@ function spawnAsteroids(count) {
       x = rand(0, W);
       y = rand(0, H);
     } while (Math.hypot(x - W / 2, y - H / 2) < SAFE_DIST);
-    asteroids.push(new Asteroid(x, y, 3));
+    asteroids.push(new Asteroid(x, y, 3, Math.random() < 0.25));
   }
 }
 
@@ -402,7 +413,7 @@ function update(dt) {
       if (!a.dead && !b.dead && dist(b, a) < a.radius) {
         b.dead = true;
         a.dead = true;
-        score += POINTS[a.size];
+        score += POINTS[a.size] * (a.golden ? 2 : 1);
         explode(a.x, a.y, a.size * 5);
         const fragments = a.split();
         for (const f of fragments) {
