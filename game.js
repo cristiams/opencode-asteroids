@@ -156,6 +156,9 @@ class Ship {
     this.invincible    = 3;
     this.shootCooldown = 0;
     this.dead          = false;
+    this.color         = '#fff';
+    this.thrustColor   = 'rgba(255, 130, 0, 0.85)';
+    this.scoreMultiplier = 1;
   }
 
   update(dt) {
@@ -200,7 +203,7 @@ class Ship {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
-    ctx.strokeStyle = '#fff';
+    ctx.strokeStyle = this.color;
     ctx.lineWidth   = 1.5;
     ctx.lineJoin    = 'round';
 
@@ -219,7 +222,53 @@ class Ship {
       ctx.moveTo(-8, -4);
       ctx.lineTo(-8 - rand(6, 14), 0);
       ctx.lineTo(-8,  4);
-      ctx.strokeStyle = 'rgba(255, 130, 0, 0.85)';
+      ctx.strokeStyle = this.thrustColor;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+}
+
+// ── MegaShip (nave morada 2x, doble puntos) ──────────────────────────────────
+class MegaShip extends Ship {
+  constructor() { super(); }
+
+  reset() {
+    super.reset();
+    this.radius = 24;              // 2x la nave original
+    this.color = '#a855f7';        // morado
+    this.thrustColor = 'rgba(168, 85, 247, 0.85)';
+    this.scoreMultiplier = 2;      // doble puntos
+  }
+
+  draw() {
+    if (this.dead) return;
+    if (this.invincible > 0 && Math.floor(this.invincible * 8) % 2 === 0) return;
+
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle);
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth   = 2;
+    ctx.lineJoin    = 'round';
+
+    // Silueta: triángulo con muesca trasera (2x más grande)
+    ctx.beginPath();
+    ctx.moveTo( 40,  0);   // nariz
+    ctx.lineTo(-24, -18);  // ala izquierda
+    ctx.lineTo(-14,  0);   // muesca trasera
+    ctx.lineTo(-24, 18);   // ala derecha
+    ctx.closePath();
+    ctx.stroke();
+
+    // Llama del propulsor (más grande)
+    if (this.thrusting && Math.random() > 0.35) {
+      ctx.beginPath();
+      ctx.moveTo(-16, -8);
+      ctx.lineTo(-16 - rand(12, 28), 0);
+      ctx.lineTo(-16,  8);
+      ctx.strokeStyle = this.thrustColor;
       ctx.stroke();
     }
 
@@ -309,10 +358,11 @@ class Powerup {
 // ── Estado del juego ──────────────────────────────────────────────────────────
 let ship, bullets, asteroids, particles, powerups;
 let score, lives, level;
-let state;      // 'playing' | 'dead' | 'gameover'
+let state;      // 'selecting' | 'playing' | 'dead' | 'gameover'
 let deadTimer;
 let shipSpeedMultiplier = 1;
 let speedPowerupTimer = 0;
+let selectedShipType = 'normal';   // 'normal' | 'mega'
 
 function spawnAsteroids(count) {
   const SAFE_DIST = 130;
@@ -326,8 +376,13 @@ function spawnAsteroids(count) {
   }
 }
 
+function startGameWithShip() {
+  ship = selectedShipType === 'mega' ? new MegaShip() : new Ship();
+  state = 'playing';
+  spawnAsteroids(4);
+}
+
 function initGame() {
-  ship          = new Ship();
   bullets   = [];
   asteroids = [];
   particles = [];
@@ -335,10 +390,9 @@ function initGame() {
   score  = 0;
   lives  = 3;
   level  = 1;
-  state  = 'playing';
+  state  = 'selecting';
   shipSpeedMultiplier = 1;
   speedPowerupTimer = 0;
-  spawnAsteroids(4);
 }
 
 function nextLevel() {
@@ -370,6 +424,17 @@ function killShip() {
 
 // ── Update ────────────────────────────────────────────────────────────────────
 function update(dt) {
+  if (state === 'selecting') {
+    if (pressed('Digit1') || pressed('Numpad1')) {
+      selectedShipType = 'normal';
+      startGameWithShip();
+    } else if (pressed('Digit2') || pressed('Numpad2')) {
+      selectedShipType = 'mega';
+      startGameWithShip();
+    }
+    return;
+  }
+
   if (state === 'gameover') {
     if (pressed('Space')) initGame();
     particles.forEach(p => p.update(dt));
@@ -413,7 +478,7 @@ function update(dt) {
       if (!a.dead && !b.dead && dist(b, a) < a.radius) {
         b.dead = true;
         a.dead = true;
-        score += POINTS[a.size] * (a.golden ? 2 : 1);
+        score += POINTS[a.size] * (a.golden ? 2 : 1) * ship.scoreMultiplier;
         explode(a.x, a.y, a.size * 5);
         const fragments = a.split();
         for (const f of fragments) {
@@ -526,6 +591,11 @@ function draw() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
+  if (state === 'selecting') {
+    drawShipSelection();
+    return;
+  }
+
   particles.forEach(p => p.draw());
   asteroids.forEach(a => a.draw());
   bullets.forEach(b => b.draw());
@@ -536,6 +606,59 @@ function draw() {
 
   if (state === 'gameover')
     drawOverlay('GAME OVER', `PUNTAJE: ${score}   —   ESPACIO PARA REINICIAR`);
+}
+
+function drawShipSelection() {
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 36px monospace';
+  ctx.fillText('SELECCIONA TU NAVE', W / 2, H / 2 - 100);
+
+  ctx.font = '18px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.fillText('Presiona [1] o [2] para elegir', W / 2, H / 2 - 65);
+
+  // Nave Normal
+  const nx = W / 2 - 120;
+  const ny = H / 2 + 20;
+  ctx.save();
+  ctx.translate(nx, ny);
+  ctx.rotate(-Math.PI / 2);
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(20, 0);
+  ctx.lineTo(-12, -9);
+  ctx.lineTo(-7, 0);
+  ctx.lineTo(-12, 9);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = '#fff';
+  ctx.font = '14px monospace';
+  ctx.fillText('[1] NORMAL', nx, ny + 40);
+
+  // Nave Mega
+  const mx = W / 2 + 120;
+  const my = H / 2 + 20;
+  ctx.save();
+  ctx.translate(mx, my);
+  ctx.rotate(-Math.PI / 2);
+  ctx.strokeStyle = '#a855f7';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(40, 0);
+  ctx.lineTo(-24, -18);
+  ctx.lineTo(-14, 0);
+  ctx.lineTo(-24, 18);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = '#a855f7';
+  ctx.font = '14px monospace';
+  ctx.fillText('[2] MEGA (2x)', mx, my + 40);
 }
 
 // ── Loop principal ────────────────────────────────────────────────────────────
